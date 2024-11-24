@@ -3,6 +3,14 @@ clear all;
 close all;
 clc
 
+% AJUSTES RAPIDOS
+% Los valores mas pequeños tienen mayor efecto
+
+% VELOCIDAD DE METEORITOS
+vel = 2;
+% INTENSIDAD DE METEORITOS
+intens = 5;
+
 %Se carga laberinto de la imagen Creación del ambiente
 lab = imread('mapa.png');
 labB = 1 > lab;
@@ -11,72 +19,41 @@ labBi = zeros(100,100)
 labBi(labB)=255
 %imtool(labBi);
 
-%se inicializa el mapeo del area
-Ib=zeros(100);
+%se instancian las estaciones
+labBi(20,44)=1;
+labBi(41,48)=1;
+labBi(63,48)=1;
+labBi(76,44)=1;
 
-%se instancian las naves
-Ib(20,44)=1;
-Ib(41,48)=1;
-Ib(63,48)=1;
-Ib(76,44)=1;
+D = labBi;
 
 initialPos = [[20,44];[41,48];[63,48];[76,44]];
-
-Chamfer; %mapa de distancias, recibe la imagen y regresa distancias euclidianas o con el algoritmo de manhattan
-%Se añade laberinto a chamfer
-
-D(labBi==255)=255;
-
-[m, n]=size(Ib)
 
 NA=4
 
 M=zeros(1,NA);
 N=zeros(1,NA);
 
-A.pos=zeros(size(Ib));
-A.status=zeros(size(Ib)); %%Atacando, regresando y esperando
-A.meteoritos=zeros(size(Ib));
+A.pos=zeros(size(labBi));
+A.status=zeros(size(labBi)); %%Atacando, regresando y esperando
+A.meteoritos=zeros(size(labBi));
 
-%meteorito fijo de prueba
-
-A.meteoritos(27,50) = 1000;
-A.meteoritos(48,50) = 1000;
-A.meteoritos(28,49) = 1000;
-A.meteoritos(68,47) = 1000;
-
+%inicializacion de los agentes
 for k=1:NA
-  
+    
     x=initialPos(k,2);
     y=initialPos(k,1);
     
     A.pos(y,x)=1;
     A.status(y,x)=0;
-
+    
     M(k)=y; 
     N(k)=x;
     
 end
 
-%Heatmap
-num_rows = 100;
-num_cols = 100;
-
-% Crear el colormap de difuminado de colores: rojo, naranja, amarillo, verde, blanco, negro
-cmap = [
-    0 0 0; % negro
-    1 1 1;   % blanco
-    0 1 0;   % verde
-    1 1 0;   % amarillo
-    1 0.5 0; % naranja  
-    1 0 0;   % rojo
-];
-
 %Numero de iteraciones 
 it=2500;
-
-contadorAgentes=zeros(1,it+1); %variables para contar cuanto salen del sistema
-contadorAgentes(1,1)=NA; %% queda pendiente la explicacion
 
 %3. Se inician las iteraciones y se escriben las reglas
 %A.status 0 indica espera
@@ -84,80 +61,102 @@ contadorAgentes(1,1)=NA; %% queda pendiente la explicacion
 %A.status 2 indica regresando
 
 for itera=1:it
-
-    if(mod(itera,25) == 0)
-        row = randi([12,84]);
-        col = randi([47,54]);
+    if(mod(itera,intens) == 0)
+        row = randi([21,84]);
+        col = 99;
         A.meteoritos(row,col) = 1000;
     end
 
+    % Movimiento de los meteoritos
+    if (mod(itera,vel)==0)
+        meteoritos = find(A.meteoritos == 1000);  % Encuentra las posiciones de los meteoritos
+        if ~isempty(meteoritos)
+            for i = 1:length(meteoritos)
+                [meteorito_y, meteorito_x] = ind2sub(size(D), meteoritos(i));
+
+                % Mover meteorito hacia la izquierda
+                if meteorito_x > 2
+                    A.meteoritos(meteorito_y, meteorito_x) = 0;  % Limpiar la posición actual
+                    if(D(meteorito_y, meteorito_x - 1) == 255)
+                        D(meteorito_y-1:meteorito_y+1,meteorito_x-1:meteorito_x+1) = 0;
+                        labBi(meteorito_y-1:meteorito_y+1,meteorito_x-1:meteorito_x+1) = 0;
+                    else
+                        A.meteoritos(meteorito_y, meteorito_x - 1) = 1000;  % Mover meteorito una columna a la izquierda
+                    end
+                else
+                    A.meteoritos(meteorito_y, meteorito_x) = 0;  % Eliminar meteorito al llegar al borde izquierdo
+                end
+            end
+        end
+    end
+
     for h=1:length(M)
-        %almacenamiento de las coordenadas originales del agente al inicio de cada iteración.
+        %almacenamiento de las coordenadas originales del agente al inicio de cada iteración.   
         posm=M(h);
         posn=N(h);
 
         Block=A.meteoritos(M(h)-10:M(h)+10,N(h)-10:N(h)+10);
         Lo=ismember(Block,1000);
 
-        % Valida que el agente no tiene un meteorito en su vecindario
-        if (sum(Lo(:))>0)
+        % Valida que el agente no tiene un meteorito en su vecindario, pero
+        % solo se activa si el agente esta en espera
+        if (sum(Lo(:))>0 && A.status(M(h),N(h))==0)
             % si hay un meteorito, la nave pasa a atacar
             A.status(M(h),N(h))=1;
         end
 
-        % si no hay salida, Se evalua el siguiente paso a dar en el mapa
+        % si se esta regresando
         if (A.status(posm,posn)==2)
-            BlockEstacion=D(posm-1:posm+1,posn-1:posn+1);
-            minblock = min(min(BlockEstacion));
-            if minblock<D(posm,posn)
-                [menory,menorx] = find(BlockEstacion == minblock);
-                %Se deja el espacio anterior vacio
-                A.pos(posm,posn)=0;
-                A.status(posm,posn)=0;
-                
-                if (menorx > 2)
-                    posn = posn + 1;
-                elseif (menorx < 2)
-                    posn = posn - 1;
-                end
+            %Se deja el espacio anterior vacio
+            A.pos(posm,posn)=0;
+            A.status(posm,posn)=0;
 
-                if (menory > 2)
-                    posm = posm + 1;
-                elseif (menory < 2)
-                    posm = posm - 1;
-                end
-                A.status(posm,posn)=2;
-                A.pos(posm,posn)=1;
-            else
-                A.status(posm,posn)=0;
+            if (initialPos(h,2) > posn)
+                posn = posn + 1;
+            elseif (initialPos(h,2) < posn)
+                posn = posn - 1;
             end
+
+            if (initialPos(h,1) > posm)
+                posm = posm + 1;
+            elseif (initialPos(h,1) < posm)
+                posm = posm - 1;
+            end
+
+            if(D(posm,posn) == 1)
+                A.status(posm,posn) = 0;
+            else
+
+                A.status(posm,posn)=2;
+            end
+
+            A.pos(posm,posn)=1;
+
         end
                 
         % Si esta en ataque
         if (A.status(posm,posn)==1)
-            buscarmeteoritos = find(A.meteoritos == 1000);
-            if(buscarmeteoritos)
-                [meteorito_pos_y,meteorito_pos_x] = find(A.meteoritos == 1000);
-                index = randi(1,length(meteorito_pos_x));
-                meteorito_pos_x = meteorito_pos_x(index);
-                meteorito_pos_y = meteorito_pos_y(index);
+            [meteorito_pos_y,meteorito_pos_x] = find(Block == 1000);
+            if([meteorito_pos_y,meteorito_pos_x])
+                meteorito_pos_x = meteorito_pos_x(1);
+                meteorito_pos_y = meteorito_pos_y(1);
 
                 A.pos(posm,posn)=0;
                 A.status(posm,posn)=0;
 
-                if (meteorito_pos_x > posn)
+                if (meteorito_pos_x > 11)
                     posn = posn + 1;
-                elseif (meteorito_pos_x < posn)
+                elseif (meteorito_pos_x < 11)
                     posn = posn - 1;
                 end
 
-                if (meteorito_pos_y > posm)
+                if (meteorito_pos_y > 11)
                     posm = posm + 1;
-                elseif (meteorito_pos_y < posm)
+                elseif (meteorito_pos_y < 11)
                     posm = posm - 1;
                 end
 
-                if(meteorito_pos_x(1,1) == posn(1,1)) && (meteorito_pos_y(1,1) == posm(1,1))
+                if(A.meteoritos(posm,posn) == 1000)
                     A.meteoritos(posm,posn) = 0;
                     A.status(posm,posn)=2;
                 else
@@ -173,74 +172,7 @@ for itera=1:it
         M(h) = posm;
         N(h) = posn;
     end
-    %meteoritos
-    
-    % Actualización de Posiciones y Visualización
-    T1=M(M>0);
-    T2=N(N>0);
-       
-    M=T1;
-    N=T2;
-       
-    u=length(M);
-    dat=randperm(u);
-       
-    M=M(dat);
-    N=N(dat);
 
-    % Etiquetar componentes conectados
-    cc = bwconncomp(A.pos);
-    
-    % Crear la matriz de calor basada en los clusters
-    heat_matrix = zeros(num_rows, num_cols);
-    
-    % Asignar un nivel de calor a cada cluster basado en su tamaño
-    for i = 1:cc.NumObjects
-        cluster_size = numel(cc.PixelIdxList{i});
-        heat_level = min(cluster_size, 5); % Máximo nivel de calor
-        heat_matrix(cc.PixelIdxList{i}) = heat_level;
-    end
-
-    % Crear una matriz de colores basada en la matriz de calor
-    color_matrix = zeros(num_rows, num_cols, 3);
-    for i = 1:num_rows
-        for j = 1:num_cols
-            color_idx = heat_matrix(i, j);
-            if color_idx > 0
-                color_matrix(i, j, :) = cmap(color_idx + 1, :);
-            end
-        end
-    end
-    
-    meteoritos = find(A.meteoritos == 1000);
-    if(meteoritos)
-        for i=1:length(meteoritos)
-            [meteorito_y, meteorito_x] = ind2sub(size(D), meteoritos(i)); 
-            color_matrix(meteorito_y, meteorito_x, :) = [1, 0, 0]; % Asigna rojo al meteorito
-        end
-    end
-    
-    %Se prepara el mapeo del ambiente
-    labG =zeros(100,100);
-    labG(labBi==255)=1;
-    
-    %Se grafican los agentes y los muros
-    RGB(:,:,3)=labG;
-
-    combined_matrix = max(RGB, color_matrix);
-    J = imresize(combined_matrix,5);
-    
-    figure(1)
-    imshow(J);
-    hold on
-    drawnow;
 end
-
-figure(2)
-plot(contadorAgentes(1,1:2500),'-','LineWidth', 2)
-xlabel('Iterations');
-ylabel('Number of agents');
-title('Progress of agent evacuation with respect to iterations');
-grid on; % Añadir una cuadrícula a la gráfica
 
 toc
